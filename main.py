@@ -1,8 +1,14 @@
-from vista.interfaz import Interfaz
-from controlador.controlador import Controlador
+import sys
+from PyQt5.QtWidgets import QApplication
+from controller.controller import PlaylistController
+
+def main():
+    app = QApplication(sys.argv)
+    
+    controller = PlaylistController()
+    controller.show()
+    
+    sys.exit(app.exec_())
 
 if __name__ == "__main__":
-    vista = Interfaz(None)
-    controlador = Controlador(vista)
-    vista.controlador = controlador
-    vista.iniciar()
+    main()
