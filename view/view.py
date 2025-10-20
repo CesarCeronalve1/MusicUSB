@@ -1,11 +1,153 @@
+import os
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                              QTreeWidget, QTreeWidgetItem, QLabel, QProgressBar,
                              QPushButton, QMenu, QAction, QMessageBox, QFileDialog,
                              QAbstractItemView, QSplitter, QFrame, QHeaderView,
-                             QMenuBar, QInputDialog, QApplication, QCheckBox)
+                             QMenuBar, QInputDialog, QApplication, QCheckBox,
+                             QDialog, QLineEdit, QTextEdit, QGroupBox, QProgressDialog)
 from PyQt5.QtCore import Qt, pyqtSignal, QMimeData
 from PyQt5.QtGui import QColor, QFont, QDragEnterEvent, QDropEvent, QBrush
 from utils.utils import get_folder_color, find_suitable_usb_size, format_size, bytes_to_mb
+
+class USBCopyDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Configurar Copia a USB")
+        self.setModal(True)
+        self.resize(400, 500)
+        self.init_ui()
+    
+    def init_ui(self):
+        layout = QVBoxLayout(self)
+        
+        # Grupo de metadatos
+        metadata_group = QGroupBox("Metadatos (aplicar a todas las canciones)")
+        metadata_layout = QVBoxLayout(metadata_group)
+        
+        # Álbum
+        album_layout = QHBoxLayout()
+        album_layout.addWidget(QLabel("Álbum:"))
+        self.album_edit = QLineEdit()
+        album_layout.addWidget(self.album_edit)
+        metadata_layout.addLayout(album_layout)
+        
+        # Género
+        genre_layout = QHBoxLayout()
+        genre_layout.addWidget(QLabel("Género:"))
+        self.genre_edit = QLineEdit()
+        genre_layout.addWidget(self.genre_edit)
+        metadata_layout.addLayout(genre_layout)
+        
+        # Comentarios
+        comment_layout = QVBoxLayout()
+        comment_layout.addWidget(QLabel("Comentarios:"))
+        self.comment_edit = QTextEdit()
+        self.comment_edit.setMaximumHeight(80)
+        comment_layout.addWidget(self.comment_edit)
+        metadata_layout.addLayout(comment_layout)
+        
+        # Portada
+        cover_layout = QHBoxLayout()
+        cover_layout.addWidget(QLabel("Portada:"))
+        self.cover_path_edit = QLineEdit()
+        self.cover_path_edit.setReadOnly(True)
+        self.browse_cover_btn = QPushButton("Examinar...")
+        self.browse_cover_btn.clicked.connect(self.browse_cover)
+        cover_layout.addWidget(self.cover_path_edit)
+        cover_layout.addWidget(self.browse_cover_btn)
+        metadata_layout.addLayout(cover_layout)
+        
+        layout.addWidget(metadata_group)
+        
+        # Botones
+        button_layout = QHBoxLayout()
+        self.ok_btn = QPushButton("Copiar")
+        self.cancel_btn = QPushButton("Cancelar")
+        button_layout.addWidget(self.ok_btn)
+        button_layout.addWidget(self.cancel_btn)
+        layout.addLayout(button_layout)
+        
+        # Conectar botones
+        self.ok_btn.clicked.connect(self.accept)
+        self.cancel_btn.clicked.connect(self.reject)
+    
+    def browse_cover(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Seleccionar portada", "", 
+            "Imágenes (*.jpg *.jpeg *.png *.bmp)"
+        )
+        if file_path:
+            self.cover_path_edit.setText(file_path)
+    
+    def get_metadata(self):
+        return {
+            'album': self.album_edit.text().strip(),
+            'genre': self.genre_edit.text().strip(),
+            'comment': self.comment_edit.toPlainText().strip(),
+            'cover_path': self.cover_path_edit.text().strip()
+        }
+class USBCopyProgressDialog(QDialog):
+    pause_state_changed = pyqtSignal(bool)  # Señal para pausa
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Copiando a USB")
+        self.setModal(True)
+        self.setMinimumWidth(500)
+        self.is_paused = False
+        self.init_ui()
+    
+    def init_ui(self):
+        layout = QVBoxLayout(self)
+        
+        # Etiqueta principal
+        self.main_label = QLabel("Preparando copia...")
+        layout.addWidget(self.main_label)
+        
+        # Barra de progreso
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setMinimum(0)
+        self.progress_bar.setMaximum(100)
+        self.progress_bar.setValue(0)
+        layout.addWidget(self.progress_bar)
+        
+        # Etiqueta del archivo actual
+        self.current_file_label = QLabel("")
+        self.current_file_label.setWordWrap(True)
+        layout.addWidget(self.current_file_label)
+        
+        # Botones
+        button_layout = QHBoxLayout()
+        self.pause_btn = QPushButton("Pausar")
+        self.pause_btn.clicked.connect(self.toggle_pause)
+        self.cancel_btn = QPushButton("Cancelar")
+        self.cancel_btn.clicked.connect(self.reject)
+        
+        button_layout.addWidget(self.pause_btn)
+        button_layout.addStretch()
+        button_layout.addWidget(self.cancel_btn)
+        layout.addLayout(button_layout)
+    
+    def toggle_pause(self):
+        self.is_paused = not self.is_paused
+        if self.is_paused:
+            self.pause_btn.setText("Reanudar")
+            self.main_label.setText("COPIA PAUSADA")
+        else:
+            self.pause_btn.setText("Pausar")
+            self.main_label.setText("Copiando...")
+        
+        # Emitir señal de pausa/reanudación
+        self.pause_state_changed.emit(self.is_paused)
+    
+    def update_progress(self, current, total, current_file):
+        percentage = int((current / total) * 100) if total > 0 else 0
+        self.progress_bar.setValue(percentage)
+        if not self.is_paused:
+            self.main_label.setText(f"Copiando... {current}/{total} archivos")
+        self.current_file_label.setText(f"Archivo: {os.path.basename(current_file)}")
+
+
 
 class PlaylistView(QMainWindow):
     # Señales
@@ -20,8 +162,9 @@ class PlaylistView(QMainWindow):
     load_playlist_requested = pyqtSignal()
     new_playlist_requested = pyqtSignal()
     close_playlist_requested = pyqtSignal()
-    copy_to_usb_requested = pyqtSignal()
+    copy_to_usb_requested = pyqtSignal(str, dict)
     base_changed = pyqtSignal(bool)  # True = base 1024, False = base 1000
+    pause_state_changed = pyqtSignal(bool)  # Nueva señal para pausa
     
     def __init__(self):
         super().__init__()
@@ -62,7 +205,7 @@ class PlaylistView(QMainWindow):
         load_action.triggered.connect(self.load_playlist_requested.emit)
         save_action.triggered.connect(self.save_playlist_requested.emit)
         close_action.triggered.connect(self.close_playlist_requested.emit)
-        copy_usb_action.triggered.connect(self.copy_to_usb_requested.emit)
+        copy_usb_action.triggered.connect(self.on_copy_to_usb)
         
         # TreeWidget para mostrar canciones agrupadas
         self.song_tree = QTreeWidget()
@@ -147,6 +290,53 @@ class PlaylistView(QMainWindow):
         
         # Habilitar drag and drop
         self.setAcceptDrops(True)
+    
+    def on_copy_to_usb(self):
+        """Maneja la solicitud de copia a USB"""
+        usb_path = self.get_usb_destination()
+        if not usb_path:
+            return
+        
+        metadata_config = self.get_usb_copy_config()
+        if metadata_config is None:  # Usuario canceló
+            return
+        
+        self.copy_to_usb_requested.emit(usb_path, metadata_config)
+    
+    def get_usb_copy_config(self):
+        """Muestra el diálogo para configurar la copia a USB"""
+        dialog = USBCopyDialog(self)
+        if dialog.exec_() == QDialog.Accepted:
+            return dialog.get_metadata()
+        return None
+    
+    def get_usb_destination(self):
+        """Obtiene el directorio USB destino"""
+        return QFileDialog.getExistingDirectory(
+            self, 
+            "Seleccionar destino USB", 
+            "",
+            QFileDialog.ShowDirsOnly
+        )
+    
+    def show_copy_progress(self, total_files):
+        """Muestra el diálogo de progreso"""
+        self.progress_dialog = USBCopyProgressDialog(self)
+        self.progress_dialog.show()
+        return self.progress_dialog
+    
+    def update_copy_progress(self, current, total, current_file):
+        """Actualiza el progreso de copia"""
+        if hasattr(self, 'progress_dialog') and self.progress_dialog:
+            self.progress_dialog.update_progress(current, total, current_file)
+            # Forzar actualización de la UI
+            QApplication.processEvents()
+    
+    def close_copy_progress(self):
+        """Cierra el diálogo de progreso"""
+        if hasattr(self, 'progress_dialog') and self.progress_dialog:
+            self.progress_dialog.close()
+            self.progress_dialog = None
     
     def on_base_changed(self, state):
         self.base_1024 = (state == Qt.Unchecked)

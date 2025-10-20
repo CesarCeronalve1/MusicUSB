@@ -10,7 +10,6 @@ from mutagen.oggopus import OggOpus
 from mutagen.asf import ASF
 
 def get_file_size(file_path: str) -> int:
-    """Obtiene el tamaño de un archivo en bytes"""
     try:
         return os.path.getsize(file_path)
     except (OSError, FileNotFoundError):
@@ -86,10 +85,7 @@ def get_folder_color(folder_name: str) -> Tuple[str, str]:
     return bg_color, text_color
 
 def find_suitable_usb_size(total_size_mb: float, base_1024: bool = True) -> int:
-    """
-    Encuentra el tamaño mínimo de USB que puede contener la playlist
-    Tamaños: 2, 4, 8, 16, 32, 64, 128, 256 GB
-    """
+
     usb_sizes = [2, 4, 8, 16, 32, 64, 128, 256]  # en GB
     
     if base_1024:
@@ -106,9 +102,7 @@ def find_suitable_usb_size(total_size_mb: float, base_1024: bool = True) -> int:
     return 256  # Tamaño máximo
 
 def get_audio_metadata(file_path: str) -> Dict[str, Any]:
-    """
-    Obtiene los metadatos de un archivo de audio de manera robusta
-    """
+
     metadata = {
         'title': '',
         'artist': '',
@@ -119,7 +113,6 @@ def get_audio_metadata(file_path: str) -> Dict[str, Any]:
     }
     
     try:
-        # Obtener el nombre del archivo sin extensión como título por defecto
         file_name = os.path.splitext(os.path.basename(file_path))[0]
         metadata['title'] = file_name
         
